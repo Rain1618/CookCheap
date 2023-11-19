@@ -1,6 +1,8 @@
 import json
 from provigo_web_scraping import *
-# from instacart_web_scraping import *
+from instacart_web_scraping import *
+import csv
+from fuzzywuzzy import fuzz
 
 json_data = """{
 
@@ -42,9 +44,7 @@ json_data = """{
 
                "originalName":"egg",
 
-               "meta":[
-
-                 
+               "meta":[  
 
                ],
 
@@ -53,7 +53,6 @@ json_data = """{
             },
 
             {
-
                "id":1001116,
 
                "amount":0.5,
@@ -647,8 +646,7 @@ def provigo_info(all_ingredients):
             continue
         name, info = get_info_provigo(url, driver)
         # If we cannot find a produce, don't include in the dictionary TODO null vs -1
-        if name == -1:
-
+        if name == "null":
             continue
         provigo.update({name: info})
     driver.quit()
@@ -682,15 +680,50 @@ def get_total_cost_grocery_list(grocery_list):
 
     return round(total_price, 2)
 
-# a = get_total_cost_grocery_list(a)
-# print("Total grocery list cost: $" + str(a))
+def load_csv(file_path):
+    # Load the CSV file into a dictionary with product names as keys and prices as values
+    with open(file_path, 'r', encoding='utf-8') as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip header
+        return {row[0].lower(): float(row[1]) for row in reader}
 
-# TODO, actually figure this out
-def get_cost_per_portion(grocery_list):
-    total_price = sum(
-        convert_price_to_float(item["Price"]) * item["UnitPrice"]
-        for item in grocery_list.values()
-    )
+def find_similar_product(ingredient, products):
+    # Use fuzzy matching to find a similar product
+    best_match = None
+    highest_score = 0
+    for product in products:
+        score = fuzz.ratio(ingredient.lower(), product.lower())
+        if score > highest_score:
+            highest_score = score
+            best_match = product
+    if highest_score < 0.6:
+        return False
+    return best_match
+
+def get_total_cost_grocery_list_csv(grocery_list, csv_file, grocery_store, scrap):
+    total_price = 0.0
+    unfound_ingredients = []
+    
+    products_and_prices = load_csv(csv_file)
+
+    #Go through each item in grocery list and search for it in the csv file, if not found, add to unfound_ingredients
+    for ingredient in grocery_list:
+        similar_product = find_similar_product(ingredient, products_and_prices.keys())
+
+        if similar_product:
+            total_price += products_and_prices[similar_product]
+        else:
+            unfound_ingredients.append(ingredient)
+
+    #If we cannot find it then call get_total_cost_grocery_list(instacart_info(unfound_ingredients, grocery_store))
+    print(unfound_ingredients)
+    if scrap and len(unfound_ingredients)<4:
+      total_price += get_total_cost_grocery_list(instacart_info(unfound_ingredients, grocery_store))
+
+    return round(total_price, 2)
+
+a = get_total_cost_grocery_list_csv(['mango', 'pineapple', 'kiwi', 'pesto sauce', "computer"], 'adonis.csv', 'adonis', False)
+print(a)
 
 def get_cost_all_recipes(json_file):
     """recipe_prices = {id: price}"""
@@ -711,9 +744,9 @@ def sort_increasing(recipe_prices):
     sorted_recipe_costs = dict(sorted(recipe_prices.items(), key=lambda item: item[1]))
     return sorted_recipe_costs
 
-recipe_costs = {637161: 25.01, 641411: 39.85, 637160: 2.01}
+# recipe_costs = {637161: 25.01, 641411: 39.85, 637160: 2.01}
 
-print(sort_increasing(recipe_costs))
+# print(sort_increasing(recipe_costs))
 
 # print(get_cost_all_recipes(json_data))
 
